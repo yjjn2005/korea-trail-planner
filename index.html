@@ -147,7 +147,7 @@ nav {
 .bc-meta { display: flex; gap: 14px; font-size: 0.78rem; color: var(--text-muted); }
 .bc-cities { margin-top: 8px; font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
 .bc-expand { max-height: 0; overflow: hidden; transition: max-height .45s ease; }
-.bc-expand.open { max-height: 1000px; }
+.bc-expand.open { max-height: 1200px; }
 .bc-expand-inner { border-top: 1px solid var(--border); }
 .mini-table { width: 100%; border-collapse: collapse; font-size: 0.77rem; }
 .mini-table th { background: var(--surface2); padding: 5px 8px; text-align: left; color: var(--text-muted); font-weight: 600; }
@@ -170,6 +170,15 @@ nav {
 .dp-free { background: rgba(171,71,188,.2); color: #ce93d8; border: 1px solid rgba(171,71,188,.3); }
 .dp-legend { display: flex; gap: 10px; font-size: 0.65rem; color: var(--text-muted); margin-top: 2px; align-items: center; }
 .dp-legend span { display: flex; align-items: center; gap: 3px; }
+.map-expand-btn {
+  width: 100%; padding: 7px; background: rgba(66,133,244,.1); border: none; cursor: pointer;
+  color: #4285f4; font-size: 0.78rem; text-align: center; font-weight: 700;
+  border-top: 1px solid rgba(66,133,244,.2); transition: background .2s;
+}
+.map-expand-btn:hover { background: rgba(66,133,244,.2); }
+.map-frame-wrap { max-height: 0; overflow: hidden; transition: max-height .4s ease; }
+.map-frame-wrap.open { max-height: 320px; }
+.map-frame-wrap iframe { width: 100%; height: 280px; border: none; display: block; }
 .expand-btn {
   width: 100%; padding: 8px; background: var(--surface2); border: none; cursor: pointer;
   color: var(--text-muted); font-size: 0.78rem; text-align: center;
@@ -785,8 +794,12 @@ function renderBlocks() {
           <span><span style="color:${c}">출발</span>${b.start_city}
           <span style="color:var(--border)">→</span>
           <span style="color:${c}">도착</span>${b.end_city}</span>
-          <a href="${gmapDir(b.start_city, b.end_city)}" target="_blank" rel="noopener" class="gmap-btn-sm">📍 전체 경로</a>
+          <button onclick="showMapPopup(event,'${b.start_city}','${b.end_city}')" class="map-btn-sm">📍 전체 경로</button>
         </div>
+      </div>
+      <button class="map-expand-btn" onclick="toggleMapFrame('${b.no}',this)">🗺️ 지도 펼치기</button>
+      <div class="map-frame-wrap" id="mframe-${b.no}">
+        <iframe id="mframeEl-${b.no}" src="" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
       </div>
       <button class="expand-btn" onclick="toggleBlock('${b.no}',this)">▼ 일자별 일정 펼치기</button>
       <div class="bc-expand" id="bexp-${b.no}">
@@ -799,6 +812,21 @@ function renderBlocks() {
       </div>
     </div>`;
   }).join('') || '<div class="empty">검색 결과가 없습니다</div>';
+}
+
+function toggleMapFrame(no, btn) {
+  const wrap = document.getElementById('mframe-'+no);
+  const iframe = document.getElementById('mframeEl-'+no);
+  const open = wrap.classList.toggle('open');
+  if (open && !iframe.src) {
+    // 블록 데이터에서 출발/도착 도시 가져오기
+    const b = DATA.blocks.find(x => x.no == no);
+    if (b) {
+      const q = encodeURIComponent(b.start_city + ' ' + b.end_city + ' 한국 도보');
+      iframe.src = 'https://maps.google.com/maps?q=' + q + '&output=embed&hl=ko';
+    }
+  }
+  btn.textContent = open ? '🗺️ 지도 접기' : '🗺️ 지도 펼치기';
 }
 
 function toggleBlock(no, btn) {
