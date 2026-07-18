@@ -1,0 +1,25 @@
+{
+  "name": "국토 걷기 순례 플래너",
+  "short_name": "국토순례",
+  "description": "코리아둘레길 278코스 완주 계획 앱 — 해파랑길·남파랑길·서해랑길·제주올레길",
+  "start_url": "/korea-trail-planner/",
+  "display": "standalone",
+  "background_color": "#0d1b2a",
+  "theme_color": "#d4a843",
+  "orientation": "any",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>국토 걷기 순례 플래너 — 코리아둘레길 278코스</title>
 <meta name="description" content="해파랑길·남파랑길·서해랑길·제주올레길 278개 코스 전체 계획 앱">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#d4a843">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="국토순례">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
 <style>
 :root {
   --bg: #0d1b2a;
@@ -798,6 +805,15 @@ initCost();
 showSched('trek', document.querySelector('.sched-tab'));
 renderHeritage();
 renderSummary();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .then(r => console.log('SW registered:', r.scope))
+      .catch(e => console.log('SW error:', e));
+  });
+}
 </script>
 </body>
 </html>
