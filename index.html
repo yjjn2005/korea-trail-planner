@@ -178,7 +178,11 @@ nav {
 .map-expand-btn:hover { background: rgba(66,133,244,.2); }
 .map-frame-wrap { max-height: 0; overflow: hidden; transition: max-height .4s ease; }
 .map-frame-wrap.open { max-height: 320px; }
-.lmap { width: 100%; height: 280px; }
+.lmap { width: 100%; height: 300px; }
+.day-tip { background:transparent!important; border:none!important; box-shadow:none!important;
+  color:#fff; font-size:0.68rem; font-weight:900; letter-spacing:-0.4px;
+  text-shadow:0 1px 3px rgba(0,0,0,.8); pointer-events:none!important; padding:0!important; }
+.day-tip::before { display:none!important; }
 .expand-btn {
   width: 100%; padding: 8px; background: var(--surface2); border: none; cursor: pointer;
   color: var(--text-muted); font-size: 0.78rem; text-align: center;
@@ -887,16 +891,10 @@ function toggleMapFrame(no, btn) {
       radius:18, fillColor:color, color:'#fff', weight:3, opacity:1, fillOpacity:1
     }).addTo(map);
 
-    // 숫자 라벨 (interactive:false 로 클릭 차단 안 함)
-    L.marker([c[0],c[1]], {
-      icon: L.divIcon({
-        className:'',
-        html: '<div style="color:#fff;font-size:0.68rem;font-weight:900;text-align:center;'
-            + 'line-height:36px;pointer-events:none;letter-spacing:-0.5px">D'+s.day+'</div>',
-        iconSize:[36,36], iconAnchor:[18,18]
-      }),
-      interactive:false
-    }).addTo(map);
+    // 일차 번호: permanent tooltip (클릭 절대 차단 안 함)
+    circle.bindTooltip('D'+s.day, {
+      permanent:true, direction:'center', className:'day-tip'
+    });
 
     const prevCity = idx>0 ? sched[idx-1].city : null;
     const dist = s.distance, wt = dist ? walkTime(dist) : '';
