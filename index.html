@@ -177,12 +177,24 @@ nav {
 }
 .map-expand-btn:hover { background: rgba(66,133,244,.2); }
 .map-frame-wrap { max-height: 0; overflow: hidden; transition: max-height .4s ease; }
-.map-frame-wrap.open { max-height: 320px; }
+.map-frame-wrap.open { max-height: 380px; }
 .lmap { width: 100%; height: 300px; }
 .day-tip { background:transparent!important; border:none!important; box-shadow:none!important;
   color:#fff; font-size:0.68rem; font-weight:900; letter-spacing:-0.4px;
   text-shadow:0 1px 3px rgba(0,0,0,.8); pointer-events:none!important; padding:0!important; }
 .day-tip::before { display:none!important; }
+.day-nav-strip {
+  display:flex; gap:5px; padding:7px 10px; align-items:center;
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+  background:rgba(0,0,0,.55); flex-shrink:0; scrollbar-width:none;
+}
+.day-nav-strip::-webkit-scrollbar { display:none; }
+.dnav-chip {
+  flex-shrink:0; padding:3px 10px; border-radius:10px; font-size:0.72rem;
+  font-weight:800; cursor:pointer; white-space:nowrap;
+  -webkit-tap-highlight-color:transparent; transition:opacity .15s;
+}
+.dnav-chip:active { opacity:.6; }
 .expand-btn {
   width: 100%; padding: 8px; background: var(--surface2); border: none; cursor: pointer;
   color: var(--text-muted); font-size: 0.78rem; text-align: center;
@@ -953,6 +965,26 @@ function toggleMapFrame(no, btn) {
   } else {
     map.setView([36.5,128.0],7);
   }
+  // D1~D14 칩 바: 지도 아래 배치, 각 칩 클릭 시 해당 마커 팝업 열기
+  const strip = document.createElement('div');
+  strip.className = 'day-nav-strip';
+  markers.forEach((circle, i) => {
+    const s = sched[i];
+    const isTrek = s.type && s.type.includes('트레킹');
+    const isMove = s.type && s.type.includes('이동');
+    const col = isTrek ? '#3b9eff' : isMove ? '#999' : '#ab47bc';
+    const chip = document.createElement('button');
+    chip.className = 'dnav-chip';
+    chip.textContent = 'D' + s.day;
+    chip.style.cssText = 'border:1.5px solid '+col+';background:'+col+'33;color:'+col+';';
+    chip.addEventListener('click', function() {
+      map.setView(circle.getLatLng(), Math.max(map.getZoom(), 12), {animate:true});
+      setTimeout(function(){ circle.openPopup(); }, 350);
+    });
+    strip.appendChild(chip);
+  });
+  wrap.appendChild(strip);
+
   if (markers.length>0) setTimeout(()=>markers[0].openPopup(),500);
 }
 
