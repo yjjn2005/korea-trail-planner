@@ -384,7 +384,7 @@ footer a { color: var(--gold); text-decoration: none; }
 <div class="filters">
   <div class="search-wrap">
     <span class="s-icon">🔍</span>
-    <input type="text" id="searchInput" placeholder="코스명, 도시, 숙소, 국가유산 검색..." oninput="onSearch()">
+    <input type="text" id="searchInput" placeholder="코스명, 도시, 숙소, 국가유산 검색..." oninput="onSearch()" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();onSearch();}" inputmode="search" enterkeyhint="search">
   </div>
   <div class="trail-btns">
     <button class="trail-btn tb-all active" onclick="setTrail('전체',this)">전체</button>
@@ -879,19 +879,45 @@ function toggleMapFrame(no, btn) {
   _leafletMaps[no] = map;
 
   const points=[], markers=[];
+
+  // 같은 좌표 마커 겹침 방지: 나선형 오프셋
+  const coordCount = {};
+  const coordIndex = {};
+  sched.forEach(s => {
+    const c = getCityCoords(s.city);
+    if (!c) return;
+    const key = c[0].toFixed(2)+','+c[1].toFixed(2);
+    coordCount[key] = (coordCount[key]||0) + 1;
+  });
+  const coordSeen = {};
+
   sched.forEach((s,idx) => {
     const c = getCityCoords(s.city);
     if (!c) return;
+    const key = c[0].toFixed(2)+','+c[1].toFixed(2);
+    const total = coordCount[key];
+    coordSeen[key] = (coordSeen[key]||0);
+    const rank = coordSeen[key]++;
+
+    // 겹치는 마커 나선형 분산 (0.015도 ≒ 1.5km 반경)
+    let lat = c[0], lng = c[1];
+    if (total > 1) {
+      const angle = (2 * Math.PI * rank) / total;
+      const r = total <= 3 ? 0.008 : total <= 6 ? 0.012 : 0.016;
+      lat = c[0] + r * Math.cos(angle);
+      lng = c[1] + r * Math.sin(angle) * 1.3;
+    }
     const isTrek = s.type&&s.type.includes('트레킹');
     const isMove = s.type&&s.type.includes('이동');
     const color  = isTrek ? '#3b9eff' : isMove ? '#777' : '#ab47bc';
 
     // circleMarker: PC/모바일 모두 클릭 완벽 지원
-    const circle = L.circleMarker([c[0],c[1]], {
+    const circle = L.circleMarker([lat,lng], {
       radius:18, fillColor:color, color:'#fff', weight:3, opacity:1, fillOpacity:1
     }).addTo(map);
 
     // 일차 번호: permanent tooltip (클릭 절대 차단 안 함)
+    // tooltip
     circle.bindTooltip('D'+s.day, {
       permanent:true, direction:'center', className:'day-tip'
     });
@@ -914,9 +940,9 @@ function toggleMapFrame(no, btn) {
     ph += '</div>';
 
     circle.bindPopup(ph, {maxWidth:260, autoPan:true, autoPanPadding:[20,20]});
-    points.push([c[0],c[1]]);
+    points.push([lat,lng]);
     markers.push(circle);
-  });
+  }); // end forEach
 
   if (points.length>1) {
     const lls = points.map(p=>L.latLng(p[0],p[1]));
