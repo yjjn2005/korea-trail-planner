@@ -863,90 +863,73 @@ function toggleMapFrame(no, btn) {
   const wrap = document.getElementById('mframe-'+no);
   const el   = document.getElementById('mframeEl-'+no);
   const open = wrap.classList.toggle('open');
-  btn.textContent = open ? '🗺️ 지도 접기' : '🗺️ 지도 펼치기';
+  btn.textContent = open ? '\u{1F5FA}️ 지도 접기' : '\u{1F5FA}️ 지도 펼치기';
   if (!open) return;
   if (_leafletMaps[no]) { _leafletMaps[no].invalidateSize(); return; }
 
   const sched = DATA.schedule.filter(s => s.block == no);
-  const map = L.map(el, { zoomControl: true, scrollWheelZoom: false, tap: true });
+  const map = L.map(el, { zoomControl:true, scrollWheelZoom:false, tap:true, tapTolerance:15 });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://openstreetmap.org">OSM</a>', maxZoom: 17
+    attribution: '&copy; <a href="https://openstreetmap.org">OSM</a>', maxZoom:17
   }).addTo(map);
   _leafletMaps[no] = map;
 
-  const points = [];
-  const markers = [];
-
-  sched.forEach((s, idx) => {
+  const points=[], markers=[];
+  sched.forEach((s,idx) => {
     const c = getCityCoords(s.city);
     if (!c) return;
+    const isTrek = s.type&&s.type.includes('트레킹');
+    const isMove = s.type&&s.type.includes('이동');
+    const color  = isTrek ? '#3b9eff' : isMove ? '#777' : '#ab47bc';
 
-    const isTrek = s.type && s.type.includes('트레킹');
-    const isMove = s.type && s.type.includes('이동');
-    const color  = isTrek ? '#3b9eff' : (isMove ? '#888' : '#ce93d8');
+    // circleMarker: PC/모바일 모두 클릭 완벽 지원
+    const circle = L.circleMarker([c[0],c[1]], {
+      radius:18, fillColor:color, color:'#fff', weight:3, opacity:1, fillOpacity:1
+    }).addTo(map);
 
-    // 큰 터치 영역 마커 (44px)
-    const icon = L.divIcon({
-      className: '',
-      html: '<div style="background:'+color+';color:#fff;border-radius:50%;width:40px;height:40px;'
-          + 'display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:900;'
-          + 'border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.55);cursor:pointer;'
-          + 'letter-spacing:-0.5px">D'+s.day+'</div>',
-      iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -22]
-    });
+    // 숫자 라벨 (interactive:false 로 클릭 차단 안 함)
+    L.marker([c[0],c[1]], {
+      icon: L.divIcon({
+        className:'',
+        html: '<div style="color:#fff;font-size:0.68rem;font-weight:900;text-align:center;'
+            + 'line-height:36px;pointer-events:none;letter-spacing:-0.5px">D'+s.day+'</div>',
+        iconSize:[36,36], iconAnchor:[18,18]
+      }),
+      interactive:false
+    }).addTo(map);
 
-    // 팝업: 전 지점 거리 + 도보 시간
-    const prevDay  = idx > 0 ? sched[idx-1] : null;
-    const prevCity = prevDay ? prevDay.city : null;
-    const dist     = s.distance;
-    const wt       = dist ? walkTime(dist) : '';
-
-    let popupHtml = '<div style="font-size:0.85rem;min-width:180px;line-height:1.7">'
-      + '<b style="font-size:1rem">D'+s.day+' '+s.city+'</b><br>'
-      + '<span style="color:#aaa;font-size:0.78rem">'+(s.activity||'')+'</span><br>';
-
+    const prevCity = idx>0 ? sched[idx-1].city : null;
+    const dist = s.distance, wt = dist ? walkTime(dist) : '';
+    let ph = '<div style="font-size:0.88rem;min-width:200px;line-height:1.8;color:#111">'
+      + '<b style="font-size:1rem">D'+s.day+' · '+s.city+'</b><br>'
+      + '<span style="color:#555;font-size:0.78rem">'+(s.activity||'')+'</span>';
     if (isTrek && dist) {
-      popupHtml += '<hr style="border-color:#333;margin:5px 0">'
-        + (prevCity && prevCity !== s.city
-            ? '<span style="color:#aaa">📍 '+prevCity+' → '+s.city+'</span><br>'
-            : '')
-        + '📏 <b>'+dist+'km</b>'
-        + ' &nbsp;⏱ <b style="color:#f4b942">'+wt+'</b> <span style="color:#aaa;font-size:0.72rem">(도보 3.5km/h)</span>';
+      ph += '<hr style="border:none;border-top:1px solid #ddd;margin:5px 0">'
+        + (prevCity&&prevCity!==s.city ? '<span style="color:#888;font-size:0.76rem">📍 '+prevCity+' → '+s.city+'</span><br>' : '')
+        + '<span>📏 <b>'+dist+'km</b>&nbsp;&nbsp;⏱ <b style="color:#c17d00">'+wt+'</b></span><br>'
+        + '<span style="color:#999;font-size:0.72rem">도보 3.5km/h 기준</span>';
     } else if (isMove) {
-      popupHtml += '<br>🚌 <span style="color:#aaa">이동일 — 대중교통/차량 이용</span>';
+      ph += '<br><span style="color:#888">🚌 이동일 — 대중교통 이용</span>';
     } else {
-      popupHtml += '<br>🌸 <span style="color:#ce93d8">자유일정 — 관광·휴식</span>';
+      ph += '<br><span style="color:#ab47bc">🌸 자유일정 — 관광·휴식</span>';
     }
-    popupHtml += '</div>';
+    ph += '</div>';
 
-    const marker = L.marker(c, {icon})
-      .addTo(map)
-      .bindPopup(popupHtml, {maxWidth: 240, autoPan: true});
-
-    // 모바일 터치 지원
-    marker.on('click touchend', function(e) {
-      this.openPopup();
-    });
-
-    points.push(c);
-    markers.push(marker);
+    circle.bindPopup(ph, {maxWidth:260, autoPan:true, autoPanPadding:[20,20]});
+    points.push([c[0],c[1]]);
+    markers.push(circle);
   });
 
-  // 구간별 점선 연결
-  if (points.length > 1) {
-    const latlngs = points.map(p => L.latLng(p[0], p[1]));
-    L.polyline(latlngs, {color:'#3b9eff', weight:2.5, opacity:0.55, dashArray:'6,5'}).addTo(map);
-    map.fitBounds(L.latLngBounds(latlngs), {padding:[28, 28]});
-  } else if (points.length === 1) {
-    map.setView(points[0], 11);
+  if (points.length>1) {
+    const lls = points.map(p=>L.latLng(p[0],p[1]));
+    L.polyline(lls,{color:'#3b9eff',weight:2.5,opacity:0.5,dashArray:'7,5'}).addTo(map);
+    map.fitBounds(L.latLngBounds(lls),{padding:[32,32]});
+  } else if (points.length===1) {
+    map.setView(points[0],11);
   } else {
-    map.setView([36.5, 128.0], 7);
+    map.setView([36.5,128.0],7);
   }
-
-  // D1 팝업 자동 오픈
-  if (markers.length > 0) {
-    setTimeout(() => markers[0].openPopup(), 400);
-  }
+  if (markers.length>0) setTimeout(()=>markers[0].openPopup(),500);
 }
 
 function toggleBlock(no, btn) {
