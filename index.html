@@ -814,16 +814,64 @@ function renderBlocks() {
   }).join('') || '<div class="empty">검색 결과가 없습니다</div>';
 }
 
+// 주요 도시 좌표 테이블 (위도, 경도)
+const CITY_COORDS = {
+  '부산':    [35.18, 129.08], '울산':    [35.54, 129.31], '경주':    [35.85, 129.22],
+  '영덕':    [36.41, 129.37], '삼척':    [37.45, 129.17], '강릉':    [37.75, 128.88],
+  '동해':    [37.52, 129.11], '속초':    [38.21, 128.59], '고성':    [38.38, 128.47],
+  '고성(강원)': [38.38, 128.47], '고성(경남)': [34.98, 128.32],
+  '거제':    [34.88, 128.62], '통영':    [34.85, 128.43], '사천':    [35.00, 128.06],
+  '남해':    [34.84, 127.89], '하동':    [35.07, 127.75], '광양':    [34.94, 127.70],
+  '순천':    [34.95, 127.49], '여수':    [34.74, 127.73], '고흥':    [34.61, 127.28],
+  '보성':    [34.77, 127.08], '장흥':    [34.68, 126.91], '강진':    [34.64, 126.77],
+  '해남':    [34.57, 126.60], '진도':    [34.49, 126.26], '목포':    [34.81, 126.39],
+  '무안':    [34.99, 126.46], '함평':    [35.07, 126.52], '영광':    [35.28, 126.51],
+  '고창':    [35.44, 126.70], '부안':    [35.73, 126.73], '군산':    [35.97, 126.71],
+  '서천':    [36.08, 126.69], '보령':    [36.33, 126.61], '홍성':    [36.60, 126.66],
+  '태안':    [36.75, 126.30], '서산':    [36.78, 126.45], '당진':    [36.89, 126.63],
+  '아산':    [36.79, 127.00], '인천':    [37.46, 126.71], '시흥':    [37.38, 126.80],
+  '안산':    [37.32, 126.83], '화성':    [37.20, 126.83], '평택':    [37.00, 126.99],
+  '제주':    [33.50, 126.53], '서귀포':  [33.25, 126.56],
+  '포항':    [36.02, 129.36], '울진':    [36.99, 129.40], '봉화':    [36.89, 128.93]
+};
+
+function getCityCoords(name) {
+  if (!name) return null;
+  const city = name.trim().split(' ')[0];
+  if (CITY_COORDS[city]) return CITY_COORDS[city];
+  // 부분 일치
+  for (const k of Object.keys(CITY_COORDS)) {
+    if (city.includes(k) || k.includes(city)) return CITY_COORDS[k];
+  }
+  return null;
+}
+
 function toggleMapFrame(no, btn) {
   const wrap = document.getElementById('mframe-'+no);
   const iframe = document.getElementById('mframeEl-'+no);
   const open = wrap.classList.toggle('open');
-  if (open && !iframe.src) {
-    // 블록 데이터에서 출발/도착 도시 가져오기
+  if (open && !iframe.getAttribute('src')) {
     const b = DATA.blocks.find(x => x.no == no);
     if (b) {
-      const q = encodeURIComponent(b.start_city + ' ' + b.end_city + ' 한국 도보');
-      iframe.src = 'https://maps.google.com/maps?q=' + q + '&output=embed&hl=ko';
+      const c1 = getCityCoords(b.start_city);
+      const c2 = getCityCoords(b.end_city);
+      let url;
+      if (c1 && c2) {
+        const minLat = Math.min(c1[0], c2[0]) - 0.3;
+        const maxLat = Math.max(c1[0], c2[0]) + 0.3;
+        const minLon = Math.min(c1[1], c2[1]) - 0.3;
+        const maxLon = Math.max(c1[1], c2[1]) + 0.3;
+        const mLat = (c1[0]+c2[0])/2, mLon = (c1[1]+c2[1])/2;
+        url = 'https://www.openstreetmap.org/export/embed.html?bbox='
+          + minLon+','+minLat+','+maxLon+','+maxLat
+          + '&layer=mapnik&marker='+mLat+','+mLon;
+      } else {
+        const c = c1 || [36.5, 128.0];
+        url = 'https://www.openstreetmap.org/export/embed.html?bbox='
+          + (c[1]-0.5)+','+(c[0]-0.5)+','+(c[1]+0.5)+','+(c[0]+0.5)
+          + '&layer=mapnik&marker='+c[0]+','+c[1];
+      }
+      iframe.src = url;
     }
   }
   btn.textContent = open ? '🗺️ 지도 접기' : '🗺️ 지도 펼치기';
