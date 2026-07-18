@@ -256,6 +256,24 @@ nav {
 .total-tile-num { font-size: 1.5rem; font-weight: 900; color: var(--gold); }
 .total-tile-lbl { font-size: 0.72rem; color: var(--text-muted); margin-top: 3px; }
 
+
+.gmap-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 12px; font-size: 0.72rem; font-weight: 700;
+  background: rgba(66,133,244,.15); color: #4285f4;
+  border: 1px solid rgba(66,133,244,.35); white-space: nowrap;
+  text-decoration: none; transition: background .2s;
+}
+.gmap-btn:hover { background: rgba(66,133,244,.3); }
+.gmap-btn-sm {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 7px; border-radius: 10px; font-size: 0.68rem; font-weight: 700;
+  background: rgba(66,133,244,.12); color: #4285f4;
+  border: 1px solid rgba(66,133,244,.3); white-space: nowrap;
+  text-decoration: none; transition: background .2s;
+}
+.gmap-btn-sm:hover { background: rgba(66,133,244,.28); }
+
 /* SCROLL TOP */
 #scrollTop {
   position: fixed; bottom: 76px; right: 16px; width: 40px; height: 40px;
@@ -600,6 +618,24 @@ function typeTag(type) {
   return '<span class="type-tag tt-free">자유</span>';
 }
 
+
+function gmapDir(start, end) {
+  const s = encodeURIComponent(start + ' 한국');
+  const e = encodeURIComponent(end + ' 한국');
+  return `https://www.google.com/maps/dir/${s}/${e}`;
+}
+function gmapSearch(query) {
+  return `https://www.google.com/maps/search/${encodeURIComponent(query + ' 한국')}`;
+}
+function gmapBtn(start, end, label) {
+  const url = end ? gmapDir(start, end) : gmapSearch(start);
+  return `<a href="${url}" target="_blank" rel="noopener" class="gmap-btn">📍 ${label||'지도보기'}</a>`;
+}
+function gmapBtnSm(start, end) {
+  const url = end ? gmapDir(start, end) : gmapSearch(start);
+  return `<a href="${url}" target="_blank" rel="noopener" class="gmap-btn-sm">📍지도</a>`;
+}
+
 /* ======= BLOCKS ======= */
 function renderBlocks() {
   const filtered = DATA.blocks.filter(b => {
@@ -623,6 +659,7 @@ function renderBlocks() {
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.activity}</td>
       <td style="color:var(--text-muted);white-space:nowrap">${s.distance?s.distance+'km':''}</td>
       <td style="color:var(--text-muted);white-space:nowrap">${s.city}</td>
+      <td>${s.type&&s.type.includes('트레킹')&&s.activity ? gmapBtnSm(s.activity.split('(')[0].trim(),'') : ''}</td>
     </tr>`).join('');
     return `<div class="block-card">
       <div class="bc-head">
@@ -639,17 +676,18 @@ function renderBlocks() {
           <span>📏 ${b.distance}km</span>
           <span>📅 14일</span>
         </div>
-        <div class="bc-cities">
-          <span style="color:${c}">출발</span>${b.start_city}
+        <div class="bc-cities" style="flex-wrap:wrap;gap:8px">
+          <span><span style="color:${c}">출발</span>${b.start_city}
           <span style="color:var(--border)">→</span>
-          <span style="color:${c}">도착</span>${b.end_city}
+          <span style="color:${c}">도착</span>${b.end_city}</span>
+          <a href="${gmapDir(b.start_city, b.end_city)}" target="_blank" rel="noopener" class="gmap-btn-sm">📍 전체 경로</a>
         </div>
       </div>
       <button class="expand-btn" onclick="toggleBlock('${b.no}',this)">▼ 일자별 일정 펼치기</button>
       <div class="bc-expand" id="bexp-${b.no}">
         <div class="bc-expand-inner">
           <table class="mini-table">
-            <thead><tr><th>일차</th><th>유형</th><th>활동</th><th>거리</th><th>도시</th></tr></thead>
+            <thead><tr><th>일차</th><th>유형</th><th>활동</th><th>거리</th><th>도시</th><th>지도</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -689,9 +727,9 @@ function renderCourses() {
   // Update column headers for heritage mode
   const thRow = document.querySelector('.course-tbl thead tr');
   if (curTrail === '국가유산길') {
-    thRow.innerHTML = '<th>번호</th><th>길 이름</th><th>유산명</th><th>소재지</th><th>유형</th><th colspan="2">연계 트레일</th><th>설명</th><th></th>';
+    thRow.innerHTML = '<th>번호</th><th>길 이름</th><th>유산명</th><th>소재지</th><th>유형</th><th>연계 트레일</th><th>설명</th><th>지도</th>';
   } else {
-    thRow.innerHTML = '<th style="width:50px">번호</th><th style="width:90px">트레일</th><th>코스명</th><th>시작</th><th>종료</th><th style="width:60px">거리</th><th style="width:90px">소요시간</th><th style="width:70px">거점도시</th><th>국가유산</th>';
+    thRow.innerHTML = '<th style="width:50px">번호</th><th style="width:90px">트레일</th><th>코스명</th><th>시작</th><th>종료</th><th style="width:60px">거리</th><th style="width:90px">소요시간</th><th style="width:70px">거점도시</th><th>국가유산</th><th style="width:70px">지도</th>';
   }
 
   document.getElementById('courseTbody').innerHTML = all.length ? all.map(c => {
@@ -704,7 +742,8 @@ function renderCourses() {
         <td style="color:var(--text-muted);font-size:0.8rem">${c.start}</td>
         <td style="color:var(--text-muted);font-size:0.8rem">${c.region}</td>
         <td colspan="2">${linked}</td>
-        <td style="font-size:0.78rem;color:var(--text-muted)" colspan="2">${c.desc||''}</td>
+        <td style="font-size:0.78rem;color:var(--text-muted)">${c.desc||''}</td>
+        <td>${gmapBtnSm(c.name, '')}</td>
       </tr>`;
     }
     return `<tr>
@@ -717,6 +756,7 @@ function renderCourses() {
       <td style="color:var(--text-muted);font-size:0.8rem;white-space:nowrap">${c.duration}</td>
       <td style="font-size:0.8rem">${c.city}</td>
       <td>${c.heritage?`<span class="h-tag">★ ${c.heritage}</span>`:''}</td>
+      <td>${c.start && c.end ? gmapBtnSm(c.start, c.end) : ''}</td>
     </tr>`;
   }).join('') : '<tr><td colspan="9" class="empty">검색 결과가 없습니다</td></tr>';
 }
@@ -733,6 +773,7 @@ function renderHotels() {
       <div class="h-name">${h.hotel}</div>
       <div class="h-grade">${h.grade}</div>
       <div class="h-desc">${h.desc}</div>
+      <div style="margin-top:10px">${gmapBtn(h.hotel, '', h.hotel)}</div>
     </div>`).join('') || '<div class="empty">검색 결과가 없습니다</div>';
 }
 
