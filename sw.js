@@ -1,4 +1,4 @@
-const CACHE = 'korea-trail-v1';
+const CACHE = 'korea-trail-v3';
 const ASSETS = [
   '/korea-trail-planner/',
   '/korea-trail-planner/index.html'
