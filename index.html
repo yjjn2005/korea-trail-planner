@@ -163,8 +163,11 @@ nav {
 .day-pill {
   display: inline-flex; align-items: center; justify-content: center;
   width: 32px; height: 22px; border-radius: 6px; font-size: 0.65rem; font-weight: 800;
-  cursor: default; letter-spacing: -0.3px;
+  cursor: pointer; letter-spacing: -0.3px; border: none;
+  -webkit-tap-highlight-color: transparent; transition: transform .1s, opacity .1s;
 }
+.day-pill:hover { opacity: .8; }
+.day-pill:active { transform: scale(.9); }
 .dp-trek { background: rgba(59,158,255,.22); color: #3b9eff; border: 1px solid rgba(59,158,255,.35); }
 .dp-move { background: rgba(180,180,180,.16); color: #aaa; border: 1px solid rgba(180,180,180,.25); }
 .dp-free { background: rgba(171,71,188,.2); color: #ce93d8; border: 1px solid rgba(171,71,188,.3); }
@@ -792,9 +795,9 @@ function renderBlocks() {
     const c = TRAIL_COLOR[b.trail]||'var(--gold)';
     const pc = TRAIL_PILL[b.trail]||'';
     const sched = DATA.schedule.filter(s => s.block===b.no);
-    const dayPills = sched.map(s => {
+    const dayPills = sched.map((s,idx) => {
       const cls = s.type&&s.type.includes('트레킹') ? 'dp-trek' : s.type&&s.type.includes('이동') ? 'dp-move' : 'dp-free';
-      return '<span class="day-pill '+cls+'">D'+s.day+'</span>';
+      return '<button class="day-pill '+cls+'" onclick="openDayOnMap('+b.no+','+idx+',this)" title="D'+s.day+' 지도에서 보기">D'+s.day+'</button>';
     }).join('');
     const rows = sched.map(s => `<tr>
       <td style="color:var(--text-muted);font-weight:700;width:36px">D${s.day}</td>
@@ -879,6 +882,7 @@ function getCityCoords(name) {
 }
 
 const _leafletMaps = {};
+const _leafletMarkers = {};
 
 function walkTime(km) {
   if (!km) return '';
@@ -904,6 +908,10 @@ function toggleMapFrame(no, btn) {
   _leafletMaps[no] = map;
 
   const points=[], markers=[];
+
+  // D1부터 누적 거리 계산 (distance가 문자열일 수 있으므로 parseFloat)
+  let cumKm = 0;
+  sched.forEach(s => { cumKm += parseFloat(s.distance)||0; s._cumKm = Math.round(cumKm*10)/10; });
 
   // 같은 좌표 마커 겹침 방지: 나선형 오프셋
   const coordCount = {};
@@ -949,25 +957,33 @@ function toggleMapFrame(no, btn) {
 
     const prevCity = idx>0 ? sched[idx-1].city : null;
     const dist = s.distance, wt = dist ? walkTime(dist) : '';
-    let ph = '<div style="font-size:0.88rem;min-width:200px;line-height:1.8;color:#111">'
+    const cumKmRound = s._cumKm;
+    const cumWt = s._cumKm ? walkTime(s._cumKm) : '';
+    let ph = '<div style="font-size:0.88rem;min-width:210px;line-height:1.8;color:#111">'
       + '<b style="font-size:1rem">D'+s.day+' · '+s.city+'</b><br>'
       + '<span style="color:#555;font-size:0.78rem">'+(s.activity||'')+'</span>';
     if (isTrek && dist) {
       ph += '<hr style="border:none;border-top:1px solid #ddd;margin:5px 0">'
         + (prevCity&&prevCity!==s.city ? '<span style="color:#888;font-size:0.76rem">📍 '+prevCity+' → '+s.city+'</span><br>' : '')
-        + '<span>📏 <b>'+dist+'km</b>&nbsp;&nbsp;⏱ <b style="color:#c17d00">'+wt+'</b></span><br>'
-        + '<span style="color:#999;font-size:0.72rem">도보 3.5km/h 기준</span>';
+        + '<span>🦶 구간 &nbsp;<b>'+dist+'km</b>&nbsp;&nbsp;⏱ <b style="color:#c17d00">'+wt+'</b></span><br>';
+      if (idx > 0) {
+        ph += '<span style="color:#1a7a2a;font-size:0.82rem">📊 D1 누적 &nbsp;<b>'+cumKmRound+'km</b>&nbsp;&nbsp;⏱ <b style="color:#1a7a2a">'+cumWt+'</b></span><br>';
+      }
+      ph += '<span style="color:#999;font-size:0.72rem">도보 3.5km/h 기준</span>';
     } else if (isMove) {
       ph += '<br><span style="color:#888">🚌 이동일 — 대중교통 이용</span>';
+      if (s._cumKm) ph += '<br><span style="color:#1a7a2a;font-size:0.78rem">📊 D1 누적 '+cumKmRound+'km</span>';
     } else {
       ph += '<br><span style="color:#ab47bc">🌸 자유일정 — 관광·휴식</span>';
+      if (s._cumKm) ph += '<br><span style="color:#1a7a2a;font-size:0.78rem">📊 D1 누적 '+cumKmRound+'km</span>';
     }
     ph += '</div>';
 
-    circle.bindPopup(ph, {maxWidth:260, autoPan:true, autoPanPadding:[20,20]});
+    circle.bindPopup(ph, {maxWidth:270, autoPan:true, autoPanPadding:[20,20]});
     points.push([lat,lng]);
     markers.push(circle);
   }); // end forEach
+  _leafletMarkers[no] = markers;
 
   if (points.length>1) {
     const lls = points.map(p=>L.latLng(p[0],p[1]));
@@ -999,6 +1015,29 @@ function toggleMapFrame(no, btn) {
   wrap.appendChild(strip);
 
   if (markers.length>0) setTimeout(()=>markers[0].openPopup(),500);
+}
+
+function openDayOnMap(blockNo, markerIdx, pillBtn) {
+  const wrap = document.getElementById('mframe-' + blockNo);
+  const mapBtn = document.querySelector('[onclick*="toggleMapFrame(\''+blockNo+'\'"]') ||
+                 wrap.previousElementSibling;
+
+  function focusMarker() {
+    const mks = _leafletMarkers[blockNo];
+    const map = _leafletMaps[blockNo];
+    if (!mks || !mks[markerIdx] || !map) return;
+    const circle = mks[markerIdx];
+    map.setView(circle.getLatLng(), Math.max(map.getZoom(), 12), {animate: true});
+    setTimeout(function(){ circle.openPopup(); }, 350);
+    wrap.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+
+  if (!wrap.classList.contains('open')) {
+    toggleMapFrame(blockNo, mapBtn);
+    setTimeout(focusMarker, 750);
+  } else {
+    focusMarker();
+  }
 }
 
 function toggleBlock(no, btn) {
