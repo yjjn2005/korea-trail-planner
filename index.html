@@ -178,7 +178,7 @@ nav {
 .map-expand-btn:hover { background: rgba(66,133,244,.2); }
 .map-frame-wrap { max-height: 0; overflow: hidden; transition: max-height .4s ease; }
 .map-frame-wrap.open { max-height: 320px; }
-.map-frame-wrap iframe { width: 100%; height: 280px; border: none; display: block; }
+.lmap { width: 100%; height: 280px; }
 .expand-btn {
   width: 100%; padding: 8px; background: var(--surface2); border: none; cursor: pointer;
   color: var(--text-muted); font-size: 0.78rem; text-align: center;
@@ -348,6 +348,8 @@ footer a { color: var(--gold); text-decoration: none; }
   .filters { top: 54px; }
 }
 </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 
@@ -769,8 +771,9 @@ function renderBlocks() {
     const rows = sched.map(s => `<tr>
       <td style="color:var(--text-muted);font-weight:700;width:36px">D${s.day}</td>
       <td>${typeTag(s.type)}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.activity}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.activity}</td>
       <td style="color:var(--text-muted);white-space:nowrap">${s.distance?s.distance+'km':''}</td>
+      <td style="color:#f4b942;white-space:nowrap;font-weight:600">${s.distance?walkTime(s.distance):''}</td>
       <td style="color:var(--text-muted);white-space:nowrap">${s.city}</td>
       <td>${s.type&&s.type.includes('트레킹')&&s.activity ? gmapBtnSm(s.activity.split('(')[0].trim(),'') : ''}</td>
     </tr>`).join('');
@@ -799,13 +802,13 @@ function renderBlocks() {
       </div>
       <button class="map-expand-btn" onclick="toggleMapFrame('${b.no}',this)">🗺️ 지도 펼치기</button>
       <div class="map-frame-wrap" id="mframe-${b.no}">
-        <iframe id="mframeEl-${b.no}" src="" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
+        <div id="mframeEl-${b.no}" class="lmap"></div>
       </div>
       <button class="expand-btn" onclick="toggleBlock('${b.no}',this)">▼ 일자별 일정 펼치기</button>
       <div class="bc-expand" id="bexp-${b.no}">
         <div class="bc-expand-inner">
           <table class="mini-table">
-            <thead><tr><th>일차</th><th>유형</th><th>활동</th><th>거리</th><th>도시</th><th>지도</th></tr></thead>
+            <thead><tr><th>일차</th><th>유형</th><th>활동</th><th>거리</th><th>소요시간</th><th>도시</th><th>지도</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -846,35 +849,60 @@ function getCityCoords(name) {
   return null;
 }
 
+const _leafletMaps = {};
+
+function walkTime(km) {
+  if (!km) return '';
+  const h = km / 3.5;
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60);
+  return hh > 0 ? hh+'시간'+(mm>0?' '+mm+'분':'') : mm+'분';
+}
+
 function toggleMapFrame(no, btn) {
   const wrap = document.getElementById('mframe-'+no);
-  const iframe = document.getElementById('mframeEl-'+no);
+  const el   = document.getElementById('mframeEl-'+no);
   const open = wrap.classList.toggle('open');
-  if (open && !iframe.getAttribute('src')) {
-    const b = DATA.blocks.find(x => x.no == no);
-    if (b) {
-      const c1 = getCityCoords(b.start_city);
-      const c2 = getCityCoords(b.end_city);
-      let url;
-      if (c1 && c2) {
-        const minLat = Math.min(c1[0], c2[0]) - 0.3;
-        const maxLat = Math.max(c1[0], c2[0]) + 0.3;
-        const minLon = Math.min(c1[1], c2[1]) - 0.3;
-        const maxLon = Math.max(c1[1], c2[1]) + 0.3;
-        const mLat = (c1[0]+c2[0])/2, mLon = (c1[1]+c2[1])/2;
-        url = 'https://www.openstreetmap.org/export/embed.html?bbox='
-          + minLon+','+minLat+','+maxLon+','+maxLat
-          + '&layer=mapnik&marker='+mLat+','+mLon;
-      } else {
-        const c = c1 || [36.5, 128.0];
-        url = 'https://www.openstreetmap.org/export/embed.html?bbox='
-          + (c[1]-0.5)+','+(c[0]-0.5)+','+(c[1]+0.5)+','+(c[0]+0.5)
-          + '&layer=mapnik&marker='+c[0]+','+c[1];
-      }
-      iframe.src = url;
-    }
-  }
   btn.textContent = open ? '🗺️ 지도 접기' : '🗺️ 지도 펼치기';
+  if (!open) return;
+  if (_leafletMaps[no]) { _leafletMaps[no].invalidateSize(); return; }
+
+  const sched = DATA.schedule.filter(s => s.block == no);
+  const map = L.map(el, { zoomControl: true, scrollWheelZoom: false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org">OSM</a> contributors', maxZoom: 17
+  }).addTo(map);
+  _leafletMaps[no] = map;
+
+  const points = [];
+  sched.forEach(s => {
+    const c = getCityCoords(s.city);
+    if (!c) return;
+    points.push(c);
+    const isTrek = s.type && s.type.includes('트레킹');
+    const color  = isTrek ? '#3b9eff' : (s.type&&s.type.includes('이동') ? '#aaa' : '#ce93d8');
+    const icon = L.divIcon({
+      className: '',
+      html: '<div style="background:'+color+';color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:800;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.5)">D'+s.day+'</div>',
+      iconSize: [26, 26], iconAnchor: [13, 13]
+    });
+    const wt = s.distance ? walkTime(s.distance) : '';
+    const popup = '<b>D'+s.day+' '+s.city+'</b><br>'
+      + (s.activity||'') + '<br>'
+      + (s.distance ? '📏 '+s.distance+'km' : '')
+      + (wt ? ' &nbsp;⏱ '+wt : '');
+    L.marker(c, {icon}).addTo(map).bindPopup(popup);
+  });
+
+  if (points.length > 1) {
+    const latlngs = points.map(p => L.latLng(p[0], p[1]));
+    L.polyline(latlngs, {color:'#3b9eff', weight:2, opacity:0.6, dashArray:'5,5'}).addTo(map);
+    map.fitBounds(L.latLngBounds(latlngs), {padding:[20,20]});
+  } else if (points.length === 1) {
+    map.setView(points[0], 10);
+  } else {
+    map.setView([36.5, 128.0], 7);
+  }
 }
 
 function toggleBlock(no, btn) {
