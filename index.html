@@ -665,8 +665,8 @@ function buildMapUrls(start, end) {
   const ge = encodeURIComponent((end||start) + ' 한국');
   return {
     google: isDir
-      ? 'https://www.google.com/maps/dir/' + gs + '/' + ge
-      : 'https://www.google.com/maps/search/' + gs,
+      ? 'https://www.google.com/maps/dir/?api=1&origin=' + gs + '&destination=' + ge + '&travelmode=walking'
+      : 'https://www.google.com/maps/search/?api=1&query=' + gs,
     naver: isDir
       ? 'https://map.naver.com/v5/directions/-/' + encodeURIComponent(end) + '/-/walk?c=14,0,0,0,dh'
       : 'https://map.naver.com/v5/search/' + encodeURIComponent(start),
