@@ -868,40 +868,84 @@ function toggleMapFrame(no, btn) {
   if (_leafletMaps[no]) { _leafletMaps[no].invalidateSize(); return; }
 
   const sched = DATA.schedule.filter(s => s.block == no);
-  const map = L.map(el, { zoomControl: true, scrollWheelZoom: false });
+  const map = L.map(el, { zoomControl: true, scrollWheelZoom: false, tap: true });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://openstreetmap.org">OSM</a> contributors', maxZoom: 17
+    attribution: '© <a href="https://openstreetmap.org">OSM</a>', maxZoom: 17
   }).addTo(map);
   _leafletMaps[no] = map;
 
   const points = [];
-  sched.forEach(s => {
+  const markers = [];
+
+  sched.forEach((s, idx) => {
     const c = getCityCoords(s.city);
     if (!c) return;
-    points.push(c);
+
     const isTrek = s.type && s.type.includes('트레킹');
-    const color  = isTrek ? '#3b9eff' : (s.type&&s.type.includes('이동') ? '#aaa' : '#ce93d8');
+    const isMove = s.type && s.type.includes('이동');
+    const color  = isTrek ? '#3b9eff' : (isMove ? '#888' : '#ce93d8');
+
+    // 큰 터치 영역 마커 (44px)
     const icon = L.divIcon({
       className: '',
-      html: '<div style="background:'+color+';color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:800;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.5)">D'+s.day+'</div>',
-      iconSize: [26, 26], iconAnchor: [13, 13]
+      html: '<div style="background:'+color+';color:#fff;border-radius:50%;width:40px;height:40px;'
+          + 'display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:900;'
+          + 'border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.55);cursor:pointer;'
+          + 'letter-spacing:-0.5px">D'+s.day+'</div>',
+      iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -22]
     });
-    const wt = s.distance ? walkTime(s.distance) : '';
-    const popup = '<b>D'+s.day+' '+s.city+'</b><br>'
-      + (s.activity||'') + '<br>'
-      + (s.distance ? '📏 '+s.distance+'km' : '')
-      + (wt ? ' &nbsp;⏱ '+wt : '');
-    L.marker(c, {icon}).addTo(map).bindPopup(popup);
+
+    // 팝업: 전 지점 거리 + 도보 시간
+    const prevDay  = idx > 0 ? sched[idx-1] : null;
+    const prevCity = prevDay ? prevDay.city : null;
+    const dist     = s.distance;
+    const wt       = dist ? walkTime(dist) : '';
+
+    let popupHtml = '<div style="font-size:0.85rem;min-width:180px;line-height:1.7">'
+      + '<b style="font-size:1rem">D'+s.day+' '+s.city+'</b><br>'
+      + '<span style="color:#aaa;font-size:0.78rem">'+(s.activity||'')+'</span><br>';
+
+    if (isTrek && dist) {
+      popupHtml += '<hr style="border-color:#333;margin:5px 0">'
+        + (prevCity && prevCity !== s.city
+            ? '<span style="color:#aaa">📍 '+prevCity+' → '+s.city+'</span><br>'
+            : '')
+        + '📏 <b>'+dist+'km</b>'
+        + ' &nbsp;⏱ <b style="color:#f4b942">'+wt+'</b> <span style="color:#aaa;font-size:0.72rem">(도보 3.5km/h)</span>';
+    } else if (isMove) {
+      popupHtml += '<br>🚌 <span style="color:#aaa">이동일 — 대중교통/차량 이용</span>';
+    } else {
+      popupHtml += '<br>🌸 <span style="color:#ce93d8">자유일정 — 관광·휴식</span>';
+    }
+    popupHtml += '</div>';
+
+    const marker = L.marker(c, {icon})
+      .addTo(map)
+      .bindPopup(popupHtml, {maxWidth: 240, autoPan: true});
+
+    // 모바일 터치 지원
+    marker.on('click touchend', function(e) {
+      this.openPopup();
+    });
+
+    points.push(c);
+    markers.push(marker);
   });
 
+  // 구간별 점선 연결
   if (points.length > 1) {
     const latlngs = points.map(p => L.latLng(p[0], p[1]));
-    L.polyline(latlngs, {color:'#3b9eff', weight:2, opacity:0.6, dashArray:'5,5'}).addTo(map);
-    map.fitBounds(L.latLngBounds(latlngs), {padding:[20,20]});
+    L.polyline(latlngs, {color:'#3b9eff', weight:2.5, opacity:0.55, dashArray:'6,5'}).addTo(map);
+    map.fitBounds(L.latLngBounds(latlngs), {padding:[28, 28]});
   } else if (points.length === 1) {
-    map.setView(points[0], 10);
+    map.setView(points[0], 11);
   } else {
     map.setView([36.5, 128.0], 7);
+  }
+
+  // D1 팝업 자동 오픈
+  if (markers.length > 0) {
+    setTimeout(() => markers[0].openPopup(), 400);
   }
 }
 
