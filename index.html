@@ -198,6 +198,20 @@ nav {
   -webkit-tap-highlight-color:transparent; transition:opacity .15s;
 }
 .dnav-chip:active { opacity:.6; }
+/* 업데이트 알림 배너 */
+#update-banner {
+  display:none; position:fixed; bottom:70px; left:50%; transform:translateX(-50%);
+  z-index:9999; background:#1a3050; border:1px solid #d4a843;
+  border-radius:12px; padding:10px 16px; box-shadow:0 4px 20px rgba(0,0,0,.6);
+  align-items:center; gap:12px; max-width:calc(100vw - 32px); white-space:nowrap;
+}
+#update-banner.show { display:flex; }
+#update-banner span { font-size:0.82rem; color:#e8f0f8; }
+#update-banner button {
+  padding:5px 14px; border-radius:8px; border:none; cursor:pointer;
+  background:#d4a843; color:#0d1b2a; font-weight:800; font-size:0.8rem;
+  -webkit-tap-highlight-color:transparent;
+}
 .expand-btn {
   width: 100%; padding: 8px; background: var(--surface2); border: none; cursor: pointer;
   color: var(--text-muted); font-size: 0.78rem; text-align: center;
@@ -570,6 +584,10 @@ footer a { color: var(--gold); text-decoration: none; }
 
 <button id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 
+<div id="update-banner">
+  <span>🆕 새 버전이 있습니다</span>
+  <button onclick="applyUpdate()">업데이트</button>
+</div>
 <div id="mapOverlay" onclick="closeMapPopup()"></div>
 <div id="mapPopup">
   <div style="padding:6px 14px 2px;font-size:0.75rem;color:#7a9abf;font-weight:700">지도 앱 선택</div>
@@ -1234,9 +1252,27 @@ renderSummary();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js')
-      .then(r => console.log('SW registered:', r.scope))
-      .catch(e => console.log('SW error:', e));
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      reg.addEventListener('updatefound', () => {
+        const newSW = reg.installing;
+        newSW.addEventListener('statechange', () => {
+          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+            document.getElementById('update-banner').classList.add('show');
+          }
+        });
+      });
+    });
+    // 컨트롤러 변경 시 자동 새로고침
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) { refreshing = true; window.location.reload(); }
+    });
+  });
+}
+function applyUpdate() {
+  document.getElementById('update-banner').classList.remove('show');
+  navigator.serviceWorker.getRegistration().then(reg => {
+    if (reg && reg.waiting) reg.waiting.postMessage('skipWaiting');
   });
 }
 </script>
