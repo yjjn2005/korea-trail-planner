@@ -699,6 +699,18 @@ function typeTag(type) {
 }
 
 
+// D1~D14 구글지도 멀티 경유지 도보 경로 URL 생성
+function buildGoogleRouteUrl(blockNo) {
+  const sched = DATA.schedule.filter(s => s.block == blockNo);
+  // 각 일차의 위치: 활동명+도시 → 구글이 검색 가능한 장소로 인식
+  const stops = sched.map(function(s) {
+    const loc = s.activity ? s.activity + ' ' + s.city : s.city;
+    return encodeURIComponent(loc + ' 한국');
+  });
+  // /dir/A/B/C/.../N/data=!4m2!4m1!3e2  (3e2 = 도보 모드)
+  return 'https://www.google.com/maps/dir/' + stops.join('/') + '/data=!4m2!4m1!3e2';
+}
+
 function buildMapUrls(start, end) {
   const isDir = !!(start && end);
   const gs = encodeURIComponent(start + ' 한국');
@@ -814,6 +826,7 @@ function renderBlocks() {
           <span style="color:var(--border)">→</span>
           <span style="color:${c}">도착</span>${b.end_city}</span>
           <button onclick="showMapPopup(event,'${b.start_city}','${b.end_city}')" class="map-btn-sm">📍 전체 경로</button>
+          <a href="${buildGoogleRouteUrl(b.no)}" target="_blank" rel="noopener" class="map-btn-sm" style="text-decoration:none">🚶 D1→D14 구글지도</a>
         </div>
       </div>
       <button class="map-expand-btn" onclick="toggleMapFrame('${b.no}',this)">🗺️ 지도 펼치기</button>
