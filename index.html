@@ -257,22 +257,41 @@ nav {
 .total-tile-lbl { font-size: 0.72rem; color: var(--text-muted); margin-top: 3px; }
 
 
-.gmap-btn {
-  display: inline-flex; align-items: center; gap: 4px;
+.map-btn {
+  display: inline-flex; align-items: center; gap: 3px;
   padding: 3px 9px; border-radius: 12px; font-size: 0.72rem; font-weight: 700;
   background: rgba(66,133,244,.15); color: #4285f4;
   border: 1px solid rgba(66,133,244,.35); white-space: nowrap;
-  text-decoration: none; transition: background .2s;
+  cursor: pointer; transition: background .2s; user-select: none; border: 1px solid rgba(66,133,244,.35);
 }
-.gmap-btn:hover { background: rgba(66,133,244,.3); }
-.gmap-btn-sm {
+.map-btn:hover { background: rgba(66,133,244,.3); }
+.map-btn-sm {
   display: inline-flex; align-items: center; gap: 3px;
   padding: 2px 7px; border-radius: 10px; font-size: 0.68rem; font-weight: 700;
   background: rgba(66,133,244,.12); color: #4285f4;
   border: 1px solid rgba(66,133,244,.3); white-space: nowrap;
-  text-decoration: none; transition: background .2s;
+  cursor: pointer; transition: background .2s; user-select: none;
 }
-.gmap-btn-sm:hover { background: rgba(66,133,244,.28); }
+.map-btn-sm:hover, .map-btn-sm:active { background: rgba(66,133,244,.28); }
+#mapPopup {
+  position: fixed; z-index: 9999; background: #1a3050;
+  border: 1px solid #1e3a5f; border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.6); padding: 6px;
+  min-width: 190px; display: none; flex-direction: column; gap: 4px;
+}
+#mapPopup.show { display: flex; }
+.map-opt {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 8px; cursor: pointer;
+  font-size: 0.88rem; font-weight: 700; text-decoration: none;
+  transition: background .15s; color: #e8f0f8;
+}
+.map-opt:hover, .map-opt:active { background: rgba(255,255,255,.08); }
+.map-opt-icon { font-size: 1.2rem; width: 26px; text-align: center; }
+.map-opt-texts { display: flex; flex-direction: column; }
+.map-opt-sub { font-size: 0.66rem; color: #7a9abf; font-weight: 400; }
+#mapOverlay { position: fixed; inset: 0; z-index: 9998; display: none; }
+#mapOverlay.show { display: block; }
 
 /* SCROLL TOP */
 #scrollTop {
@@ -508,6 +527,27 @@ footer a { color: var(--gold); text-decoration: none; }
 
 <button id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 
+<div id="mapOverlay" onclick="closeMapPopup()"></div>
+<div id="mapPopup">
+  <div style="padding:6px 14px 2px;font-size:0.75rem;color:#7a9abf;font-weight:700">지도 앱 선택</div>
+  <a id="mp-google" class="map-opt" href="#" target="_blank" rel="noopener" onclick="closeMapPopup()">
+    <span class="map-opt-icon">🌍</span>
+    <span class="map-opt-texts">구글 지도<span class="map-opt-sub">Google Maps</span></span>
+  </a>
+  <a id="mp-naver" class="map-opt" href="#" target="_blank" rel="noopener" onclick="closeMapPopup()">
+    <span class="map-opt-icon">🟢</span>
+    <span class="map-opt-texts">네이버 지도<span class="map-opt-sub">Naver Maps</span></span>
+  </a>
+  <a id="mp-kakao" class="map-opt" href="#" target="_blank" rel="noopener" onclick="closeMapPopup()">
+    <span class="map-opt-icon">🟡</span>
+    <span class="map-opt-texts">카카오맵<span class="map-opt-sub">Kakao Maps</span></span>
+  </a>
+  <a id="mp-apple" class="map-opt" href="#" target="_blank" rel="noopener" onclick="closeMapPopup()" style="display:none">
+    <span class="map-opt-icon">🍎</span>
+    <span class="map-opt-texts">애플 지도<span class="map-opt-sub">Apple Maps (iOS)</span></span>
+  </a>
+</div>
+
 <footer>
   데이터 출처: <a href="https://www.durunubi.kr" target="_blank">두루누비(durunubi.kr)</a> 공식 API · 제주올레 공공데이터 · 국가유산청<br>
   유재진 국토걷기 순례 계획서 v1.0 &nbsp;·&nbsp;
@@ -619,22 +659,69 @@ function typeTag(type) {
 }
 
 
-function gmapDir(start, end) {
-  const s = encodeURIComponent(start + ' 한국');
-  const e = encodeURIComponent(end + ' 한국');
-  return `https://www.google.com/maps/dir/${s}/${e}`;
+function buildMapUrls(start, end) {
+  const isDir = !!(start && end);
+  const gs = encodeURIComponent(start + ' 한국');
+  const ge = encodeURIComponent((end||start) + ' 한국');
+  return {
+    google: isDir
+      ? 'https://www.google.com/maps/dir/' + gs + '/' + ge
+      : 'https://www.google.com/maps/search/' + gs,
+    naver: isDir
+      ? 'https://map.naver.com/v5/directions/-/' + encodeURIComponent(end) + '/-/walk?c=14,0,0,0,dh'
+      : 'https://map.naver.com/v5/search/' + encodeURIComponent(start),
+    kakao: isDir
+      ? 'https://map.kakao.com/?target=walk&addr=' + encodeURIComponent(end)
+      : 'https://map.kakao.com/?q=' + encodeURIComponent(start),
+    apple: isDir
+      ? 'https://maps.apple.com/?saddr=' + gs + '&daddr=' + ge + '&dirflg=w'
+      : 'https://maps.apple.com/?q=' + gs
+  };
 }
-function gmapSearch(query) {
-  return `https://www.google.com/maps/search/${encodeURIComponent(query + ' 한국')}`;
+
+function showMapPopup(event, start, end) {
+  event.stopPropagation();
+  const urls = buildMapUrls(start, end || '');
+  document.getElementById('mp-google').href = urls.google;
+  document.getElementById('mp-naver').href = urls.naver;
+  document.getElementById('mp-kakao').href = urls.kakao;
+  document.getElementById('mp-apple').href = urls.apple;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  document.getElementById('mp-apple').style.display = isIOS ? 'flex' : 'none';
+  const popup = document.getElementById('mapPopup');
+  const btn = event.currentTarget;
+  const rect = btn.getBoundingClientRect();
+  const pw = 200, ph = isIOS ? 188 : 148;
+  let left = rect.left;
+  let top = rect.bottom + 6;
+  if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+  if (top + ph > window.innerHeight - 8) top = rect.top - ph - 6;
+  if (left < 8) left = 8;
+  popup.style.left = left + 'px';
+  popup.style.top = top + 'px';
+  popup.classList.add('show');
+  document.getElementById('mapOverlay').classList.add('show');
 }
+
+function closeMapPopup() {
+  document.getElementById('mapPopup').classList.remove('show');
+  document.getElementById('mapOverlay').classList.remove('show');
+}
+
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeMapPopup(); });
+
 function gmapBtn(start, end, label) {
-  const url = end ? gmapDir(start, end) : gmapSearch(start);
-  return `<a href="${url}" target="_blank" rel="noopener" class="gmap-btn">📍 ${label||'지도보기'}</a>`;
+  var s = start.replace(/'/g, "\'");
+  var e = (end||'').replace(/'/g, "\'");
+  return '<button onclick="showMapPopup(event,\'' + s + '\',\'' + e + '\')" class="map-btn">📍 ' + (label||'지도보기') + '</button>';
 }
 function gmapBtnSm(start, end) {
-  const url = end ? gmapDir(start, end) : gmapSearch(start);
-  return `<a href="${url}" target="_blank" rel="noopener" class="gmap-btn-sm">📍지도</a>`;
+  var s = start.replace(/'/g, "\'");
+  var e = (end||'').replace(/'/g, "\'");
+  return '<button onclick="showMapPopup(event,\'' + s + '\',\'' + e + '\')" class="map-btn-sm">📍지도</button>';
 }
+function gmapDir(s,e){return buildMapUrls(s,e).google;}
+function gmapSearch(q){return buildMapUrls(q,'').google;}
 
 /* ======= BLOCKS ======= */
 function renderBlocks() {
