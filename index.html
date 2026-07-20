@@ -381,8 +381,7 @@ footer a { color: var(--gold); text-decoration: none; }
   .filters { top: 54px; }
 }
 </style>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAhdarYKLhr8F7tMT_IBUEooGY4u2c_gRI"></script>
 </head>
 <body>
 
@@ -911,8 +910,9 @@ function getCityCoords(name) {
   return null;
 }
 
-const _leafletMaps = {};
-const _leafletMarkers = {};
+const _gmaps = {};
+const _gmarkers = {};
+const _ginfowindows = {};
 
 function walkTime(km) {
   if (!km) return '';
@@ -922,30 +922,31 @@ function walkTime(km) {
   return hh > 0 ? hh+'시간'+(mm>0?' '+mm+'분':'') : mm+'분';
 }
 
+function makeSvgIcon(label, color) {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44">'
+    + '<circle cx="22" cy="22" r="19" fill="'+color+'" stroke="white" stroke-width="3"/>'
+    + '<text x="22" y="27" text-anchor="middle" fill="white" font-size="12" font-weight="bold" font-family="Arial,sans-serif">'+label+'</text>'
+    + '</svg>';
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(44, 44),
+    anchor: new google.maps.Point(22, 22)
+  };
+}
+
 function toggleMapFrame(no, btn) {
   const wrap = document.getElementById('mframe-'+no);
   const el   = document.getElementById('mframeEl-'+no);
   const open = wrap.classList.toggle('open');
-  btn.textContent = open ? '\u{1F5FA}️ 지도 접기' : '\u{1F5FA}️ 지도 펼치기';
+  btn.textContent = open ? '🗺️ 지도 접기' : '🗺️ 지도 펼치기';
   if (!open) return;
-  if (_leafletMaps[no]) { _leafletMaps[no].invalidateSize(); return; }
+  if (_gmaps[no]) { google.maps.event.trigger(_gmaps[no], 'resize'); return; }
 
   const sched = DATA.schedule.filter(s => s.block == no);
-  const map = L.map(el, { zoomControl:true, scrollWheelZoom:false, tap:true, tapTolerance:15 });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://openstreetmap.org">OSM</a>', maxZoom:17
-  }).addTo(map);
-  _leafletMaps[no] = map;
-
-  const points=[], markers=[];
-
-  // D1부터 누적 거리 계산 (distance가 문자열일 수 있으므로 parseFloat)
   let cumKm = 0;
   sched.forEach(s => { cumKm += parseFloat(s.distance)||0; s._cumKm = Math.round(cumKm*10)/10; });
 
-  // 같은 좌표 마커 겹침 방지: 나선형 오프셋
   const coordCount = {};
-  const coordIndex = {};
   sched.forEach(s => {
     const c = getCityCoords(s.city);
     if (!c) return;
@@ -954,7 +955,19 @@ function toggleMapFrame(no, btn) {
   });
   const coordSeen = {};
 
-  sched.forEach((s,idx) => {
+  const map = new google.maps.Map(el, {
+    zoom: 9, center: {lat:36.5, lng:128.0},
+    mapTypeId: 'roadmap',
+    gestureHandling: 'cooperative',
+    zoomControl: true, mapTypeControl: true,
+    streetViewControl: false, fullscreenControl: true
+  });
+  _gmaps[no] = map;
+
+  const points = [], markers = [], infoWindows = [];
+  let activeIW = null;
+
+  sched.forEach((s, idx) => {
     const c = getCityCoords(s.city);
     if (!c) return;
     const key = c[0].toFixed(2)+','+c[1].toFixed(2);
@@ -962,118 +975,124 @@ function toggleMapFrame(no, btn) {
     coordSeen[key] = (coordSeen[key]||0);
     const rank = coordSeen[key]++;
 
-    // 겹치는 마커 나선형 분산 (0.015도 ≒ 1.5km 반경)
     let lat = c[0], lng = c[1];
     if (total > 1) {
-      const angle = (2 * Math.PI * rank) / total;
-      const r = total <= 3 ? 0.008 : total <= 6 ? 0.012 : 0.016;
-      lat = c[0] + r * Math.cos(angle);
-      lng = c[1] + r * Math.sin(angle) * 1.3;
+      const angle = (2*Math.PI*rank)/total;
+      const r = total<=3 ? 0.008 : total<=6 ? 0.012 : 0.016;
+      lat = c[0] + r*Math.cos(angle);
+      lng = c[1] + r*Math.sin(angle)*1.3;
     }
     const isTrek = s.type&&s.type.includes('트레킹');
     const isMove = s.type&&s.type.includes('이동');
-    const color  = isTrek ? '#3b9eff' : isMove ? '#777' : '#ab47bc';
+    const color  = isTrek ? '#3b9eff' : isMove ? '#888888' : '#ab47bc';
 
-    // circleMarker: PC/모바일 모두 클릭 완벽 지원
-    const circle = L.circleMarker([lat,lng], {
-      radius:18, fillColor:color, color:'#fff', weight:3, opacity:1, fillOpacity:1
-    }).addTo(map);
-
-    // 일차 번호: permanent tooltip (클릭 절대 차단 안 함)
-    // tooltip
-    circle.bindTooltip('D'+s.day, {
-      permanent:true, direction:'center', className:'day-tip'
+    const marker = new google.maps.Marker({
+      position: {lat, lng}, map,
+      icon: makeSvgIcon('D'+s.day, color),
+      zIndex: idx+1, title: 'D'+s.day+' '+s.city
     });
 
     const prevCity = idx>0 ? sched[idx-1].city : null;
     const dist = s.distance, wt = dist ? walkTime(dist) : '';
-    const cumKmRound = s._cumKm;
-    const cumWt = s._cumKm ? walkTime(s._cumKm) : '';
-    let ph = '<div style="font-size:0.88rem;min-width:210px;line-height:1.8;color:#111">'
+    const cumKmRound = s._cumKm, cumWt = s._cumKm ? walkTime(s._cumKm) : '';
+    let content = '<div style="font-size:0.88rem;min-width:210px;line-height:1.8;color:#111">'
       + '<b style="font-size:1rem">D'+s.day+' · '+s.city+'</b><br>'
       + '<span style="color:#555;font-size:0.78rem">'+(s.activity||'')+'</span>';
     if (isTrek && dist) {
-      ph += '<hr style="border:none;border-top:1px solid #ddd;margin:5px 0">'
+      content += '<hr style="border:none;border-top:1px solid #ddd;margin:5px 0">'
         + (prevCity&&prevCity!==s.city ? '<span style="color:#888;font-size:0.76rem">📍 '+prevCity+' → '+s.city+'</span><br>' : '')
         + '<span>🦶 구간 &nbsp;<b>'+dist+'km</b>&nbsp;&nbsp;⏱ <b style="color:#c17d00">'+wt+'</b></span><br>';
-      if (idx > 0) {
-        ph += '<span style="color:#1a7a2a;font-size:0.82rem">📊 D1 누적 &nbsp;<b>'+cumKmRound+'km</b>&nbsp;&nbsp;⏱ <b style="color:#1a7a2a">'+cumWt+'</b></span><br>';
-      }
-      ph += '<span style="color:#999;font-size:0.72rem">도보 3.5km/h 기준</span>';
+      if (idx>0) content += '<span style="color:#1a7a2a;font-size:0.82rem">📊 D1 누적 &nbsp;<b>'+cumKmRound+'km</b>&nbsp;&nbsp;⏱ <b style="color:#1a7a2a">'+cumWt+'</b></span><br>';
+      content += '<span style="color:#999;font-size:0.72rem">도보 3.5km/h 기준</span>';
     } else if (isMove) {
-      ph += '<br><span style="color:#888">🚶 이동일 — 도보 이동</span>';
-      if (s._cumKm) ph += '<br><span style="color:#1a7a2a;font-size:0.78rem">📊 D1 누적 '+cumKmRound+'km</span>';
+      content += '<br><span style="color:#888">🚶 이동일 — 도보 이동</span>';
+      if (s._cumKm) content += '<br><span style="color:#1a7a2a;font-size:0.78rem">📊 D1 누적 '+cumKmRound+'km</span>';
     } else {
-      ph += '<br><span style="color:#ab47bc">🌸 자유일정 — 관광·휴식</span>';
-      if (s._cumKm) ph += '<br><span style="color:#1a7a2a;font-size:0.78rem">📊 D1 누적 '+cumKmRound+'km</span>';
+      content += '<br><span style="color:#ab47bc">🌸 자유일정 — 관광·휴식</span>';
+      if (s._cumKm) content += '<br><span style="color:#1a7a2a;font-size:0.78rem">📊 D1 누적 '+cumKmRound+'km</span>';
     }
-    ph += '</div>';
+    content += '</div>';
 
-    circle.bindPopup(ph, {maxWidth:270, autoPan:true, autoPanPadding:[20,20]});
-    points.push([lat,lng]);
-    markers.push(circle);
-  }); // end forEach
-  _leafletMarkers[no] = markers;
+    const iw = new google.maps.InfoWindow({content, maxWidth:280});
+    marker.addListener('click', function() {
+      if (activeIW) activeIW.close();
+      iw.open(map, marker); activeIW = iw;
+    });
 
-  if (points.length>1) {
-    const lls = points.map(p=>L.latLng(p[0],p[1]));
-    // 구간별 클릭 가능한 세그먼트 폴리라인
-    for (let i=0; i<points.length-1; i++) {
-      const s0 = sched[i], s1 = sched[i+1];
-      const isTrek0 = s0.type && s0.type.includes('트레킹');
-      const segColor = isTrek0 ? '#3b9eff' : '#777';
-      const seg = L.polyline([lls[i], lls[i+1]], {
-        color: segColor, weight: 5, opacity: 0.45, dashArray: isTrek0 ? null : '7,5'
-      }).addTo(map);
-      // 호버 하이라이트
-      seg.on('mouseover', function() { this.setStyle({opacity:0.9, weight:8}); });
-      seg.on('mouseout',  function() { this.setStyle({opacity:0.45, weight:5}); });
-      // 구간 클릭 팝업
-      (function(segRef, day0, day1, fromCity, toCity) {
-        const dist = parseFloat(day1.distance) || 0;
-        const wt = dist ? walkTime(dist) : '';
-        const isTrekSeg = day1.type && day1.type.includes('트레킹');
-        const popHtml = '<div style="font-size:0.85rem;min-width:200px;line-height:1.8;color:#111">'
-          + '<b style="font-size:0.95rem">D'+(day0.day)+'→D'+(day1.day)+'  구간</b><br>'
-          + '<span style="color:#555;font-size:0.78rem">'+(day1.activity||'')+'</span>'
-          + (isTrekSeg && dist ? '<hr style="border:none;border-top:1px solid #ddd;margin:5px 0">'
-            + '📍 '+fromCity+' → '+toCity+'<br>'
-            + '🦶 거리 <b>'+dist+'km</b>&nbsp;&nbsp;⏱ <b style="color:#c17d00">'+wt+'</b></div>'
-            : '</div>');
-        segRef.bindPopup(popHtml, {maxWidth:260});
-        segRef.on('click', function(e) {
-          L.DomEvent.stopPropagation(e);
-          segRef.openPopup(e.latlng);
-        });
-      })(seg, sched[i], sched[i+1], s0.city||'', s1.city||'');
-    }
-    map.fitBounds(L.latLngBounds(lls),{padding:[32,32]});
-  } else if (points.length===1) {
-    map.setView(points[0],11);
-  } else {
-    map.setView([36.5,128.0],7);
+    points.push({lat, lng});
+    markers.push(marker);
+    infoWindows.push(iw);
+  });
+
+  _gmarkers[no] = markers;
+  _ginfowindows[no] = infoWindows;
+
+  // 구간별 클릭 가능한 폴리라인
+  for (let i=0; i<points.length-1; i++) {
+    const s0 = sched[i], s1 = sched[i+1];
+    const isTrekSeg = s0.type&&s0.type.includes('트레킹');
+    const segColor = isTrekSeg ? '#3b9eff' : '#888888';
+    const pl = new google.maps.Polyline({
+      path: [points[i], points[i+1]], map,
+      geodesic: true, strokeColor: segColor,
+      strokeOpacity: isTrekSeg ? 0.7 : 0,
+      strokeWeight: 5,
+      icons: isTrekSeg ? [] : [{
+        icon: {path:'M 0,-1 0,1', strokeOpacity:0.8, strokeColor:segColor, scale:4},
+        offset:'0', repeat:'16px'
+      }]
+    });
+    pl.addListener('mouseover', function(){ pl.setOptions({strokeWeight:9, strokeOpacity: isTrekSeg?1:0}); });
+    pl.addListener('mouseout',  function(){ pl.setOptions({strokeWeight:5, strokeOpacity: isTrekSeg?0.7:0}); });
+
+    (function(polyline, day0, day1, fc, tc) {
+      const d = parseFloat(day1.distance)||0, wt2 = d ? walkTime(d) : '';
+      const isTk = day1.type&&day1.type.includes('트레킹');
+      const segContent = '<div style="font-size:0.85rem;min-width:200px;line-height:1.8;color:#111">'
+        + '<b>D'+day0.day+'→D'+day1.day+' 구간</b><br>'
+        + '<span style="color:#555;font-size:0.78rem">'+(day1.activity||'')+'</span>'
+        + (isTk&&d ? '<hr style="border:none;border-top:1px solid #ddd;margin:5px 0">'
+          +'📍 '+fc+' → '+tc+'<br>🦶 <b>'+d+'km</b>&nbsp;&nbsp;⏱ <b style="color:#c17d00">'+wt2+'</b>' : '')
+        + '</div>';
+      const segIW = new google.maps.InfoWindow({content:segContent, maxWidth:260});
+      polyline.addListener('click', function(e) {
+        if (activeIW) activeIW.close();
+        segIW.setPosition(e.latLng); segIW.open(map); activeIW = segIW;
+      });
+    })(pl, s0, s1, s0.city||'', s1.city||'');
   }
-  // D1~D14 칩 바: 지도 아래 배치, 각 칩 클릭 시 해당 마커 팝업 열기
+
+  // 지도 범위 맞추기
+  if (points.length>1) {
+    const bounds = new google.maps.LatLngBounds();
+    points.forEach(p => bounds.extend(p));
+    map.fitBounds(bounds, {top:40, right:40, bottom:40, left:40});
+  } else if (points.length===1) {
+    map.setCenter(points[0]); map.setZoom(11);
+  }
+
+  // D1~D14 칩 바
   const strip = document.createElement('div');
   strip.className = 'day-nav-strip';
-  markers.forEach((circle, i) => {
+  markers.forEach((mk, i) => {
     const s = sched[i];
-    const isTrek = s.type && s.type.includes('트레킹');
-    const isMove = s.type && s.type.includes('이동');
+    const isTrek = s.type&&s.type.includes('트레킹');
+    const isMove = s.type&&s.type.includes('이동');
     const col = isTrek ? '#3b9eff' : isMove ? '#999' : '#ab47bc';
     const chip = document.createElement('button');
     chip.className = 'dnav-chip';
-    chip.textContent = 'D' + s.day;
+    chip.textContent = 'D'+s.day;
     chip.style.cssText = 'border:1.5px solid '+col+';background:'+col+'33;color:'+col+';';
     chip.addEventListener('click', function() {
-      map.setView(circle.getLatLng(), Math.max(map.getZoom(), 12), {animate:true});
-      setTimeout(function(){ circle.openPopup(); }, 350);
+      map.panTo(mk.getPosition());
+      map.setZoom(Math.max(map.getZoom(), 12));
+      setTimeout(function(){ if(activeIW) activeIW.close(); infoWindows[i].open(map,mk); activeIW=infoWindows[i]; }, 300);
     });
     strip.appendChild(chip);
   });
   wrap.appendChild(strip);
 
-  if (markers.length>0) setTimeout(()=>markers[0].openPopup(),500);
+  if (markers.length>0) setTimeout(function(){ infoWindows[0].open(map,markers[0]); activeIW=infoWindows[0]; }, 600);
 }
 
 function openDayOnMap(blockNo, markerIdx, pillBtn) {
@@ -1082,18 +1101,19 @@ function openDayOnMap(blockNo, markerIdx, pillBtn) {
                  wrap.previousElementSibling;
 
   function focusMarker() {
-    const mks = _leafletMarkers[blockNo];
-    const map = _leafletMaps[blockNo];
-    if (!mks || !mks[markerIdx] || !map) return;
-    const circle = mks[markerIdx];
-    map.setView(circle.getLatLng(), Math.max(map.getZoom(), 12), {animate: true});
-    setTimeout(function(){ circle.openPopup(); }, 350);
+    const mks = _gmarkers[blockNo];
+    const map = _gmaps[blockNo];
+    const iws = _ginfowindows[blockNo];
+    if (!mks||!mks[markerIdx]||!map) return;
+    map.panTo(mks[markerIdx].getPosition());
+    map.setZoom(Math.max(map.getZoom(), 12));
+    setTimeout(function(){ google.maps.event.trigger(mks[markerIdx],'click'); }, 350);
     wrap.scrollIntoView({behavior:'smooth', block:'center'});
   }
 
   if (!wrap.classList.contains('open')) {
     toggleMapFrame(blockNo, mapBtn);
-    setTimeout(focusMarker, 750);
+    setTimeout(focusMarker, 800);
   } else {
     focusMarker();
   }
