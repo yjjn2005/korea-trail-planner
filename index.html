@@ -720,15 +720,27 @@ function typeTag(type) {
 }
 
 
-// D1~D14 구글지도 멀티 경유지 도보 경로 URL 생성
+// D1~D14 구글지도 멀티 경유지 도보 경로 URL 생성 (GPS 좌표 기반)
 function buildGoogleRouteUrl(blockNo) {
   const sched = DATA.schedule.filter(s => s.block == blockNo);
-  // 각 일차의 위치: 활동명+도시 → 구글이 검색 가능한 장소로 인식
-  const stops = sched.map(function(s) {
-    const loc = s.activity ? s.activity + ' ' + s.city : s.city;
-    return encodeURIComponent(loc + ' 한국');
+  // 트레킹·이동일만 포함 (자유일 제외), 좌표 있는 것만, 최대 10개 (구글 제한)
+  const active = sched.filter(s => {
+    const c = getCityCoords(s.city);
+    return c && s.type && !s.type.includes('자유');
   });
-  // /dir/A/B/C/.../N/data=!4m2!4m1!3e2  (3e2 = 도보 모드)
+  // 너무 많으면 균등 샘플링
+  let picks = active;
+  if (active.length > 10) {
+    const step = active.length / 9;
+    picks = [active[0]];
+    for (let i = 1; i <= 8; i++) picks.push(active[Math.min(Math.round(i*step), active.length-1)]);
+    picks.push(active[active.length-1]);
+    picks = picks.filter((v,i,a)=>a.indexOf(v)===i);
+  }
+  const stops = picks.map(s => {
+    const c = getCityCoords(s.city);
+    return c[0].toFixed(4) + ',' + c[1].toFixed(4);
+  });
   return 'https://www.google.com/maps/dir/' + stops.join('/') + '/data=!4m2!4m1!3e2';
 }
 
