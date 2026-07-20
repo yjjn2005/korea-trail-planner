@@ -395,6 +395,7 @@ footer a { color: var(--gold); text-decoration: none; }
     <button class="nav-tab" onclick="goSec('daily',this)">⏰ 일과표</button>
     <button class="nav-tab" onclick="goSec('heritage',this)">🏛️ 국가유산</button>
     <button class="nav-tab" onclick="goSec('summary',this)">📊 총괄표</button>
+    <button class="nav-tab" onclick="goSec('allmap',this)">🌏 전체지도</button>
   </div>
 </nav>
 
@@ -579,6 +580,24 @@ footer a { color: var(--gold); text-decoration: none; }
   </div>
 </div>
 
+<div id="sec-allmap" class="section">
+  <div class="sec-header" style="flex-wrap:wrap;gap:8px">
+    <div class="sec-title">🌏 전체 코스 지도</div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <span id="allmap-legend" style="display:flex;gap:10px;font-size:0.75rem;align-items:center">
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b9eff;margin-right:3px"></span>해파랑길(50)</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2ecc71;margin-right:3px"></span>남파랑길(90)</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e67e22;margin-right:3px"></span>서해랑길(109)</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e84393;margin-right:3px"></span>제주올레길(29)</span>
+      </span>
+      <button onclick="resetAllMap()" style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:0.72rem;cursor:pointer">🔄 위치 새로고침</button>
+      <button onclick="clearGeocodeCache()" style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:0.72rem;cursor:pointer">🗑️ 캐시 초기화</button>
+    </div>
+  </div>
+  <div id="allmap-status" style="padding:8px 16px;font-size:0.8rem;color:#7a9abf;display:none">⏳ 코스 위치 로딩중... <span id="allmap-progress"></span></div>
+  <div id="allmap-container" style="width:100%;height:calc(100vh - 160px);min-height:500px;border-radius:10px;overflow:hidden;margin:0 8px 8px;width:calc(100% - 16px)"></div>
+</div>
+
 </div><!-- main -->
 
 <button id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
@@ -686,7 +705,174 @@ function goSec(name, btn) {
   document.getElementById('sec-'+name).classList.add('active');
   btn.classList.add('active');
   curSec = name;
-  render();
+  if (name === 'allmap') {
+    setTimeout(initAllCoursesMap, 100);
+  } else {
+    render();
+  }
+}
+
+/* ======= 전체 코스 지도 ======= */
+const ALLMAP_COLORS = {
+  '해파랑길': '#3b9eff',
+  '남파랑길': '#2ecc71',
+  '서해랑길': '#e67e22',
+  '제주올레길': '#e84393'
+};
+const ALLMAP_CACHE_KEY = 'korea_trail_geocache_v2';
+let _allMap = null;
+let _geocodeCache = null;
+let _allMapMarkers = [];
+let _allMapIW = null;
+
+function loadGeocodeCache() {
+  if (_geocodeCache) return;
+  try {
+    const raw = localStorage.getItem(ALLMAP_CACHE_KEY);
+    _geocodeCache = raw ? JSON.parse(raw) : {};
+  } catch(e) { _geocodeCache = {}; }
+}
+
+function saveGeocodeCache() {
+  try { localStorage.setItem(ALLMAP_CACHE_KEY, JSON.stringify(_geocodeCache)); } catch(e) {}
+}
+
+function clearGeocodeCache() {
+  localStorage.removeItem(ALLMAP_CACHE_KEY);
+  _geocodeCache = {};
+  _allMap = null;
+  _allMapMarkers = [];
+  const c = document.getElementById('allmap-container');
+  if (c) c.innerHTML = '';
+  initAllCoursesMap();
+}
+
+function resetAllMap() {
+  if (_allMap) {
+    _allMap.setCenter({lat: 36.5, lng: 127.8});
+    _allMap.setZoom(7);
+  }
+}
+
+function getAllCourses() {
+  const all = [];
+  ['해파랑길','남파랑길','서해랑길','제주올레길'].forEach(function(trail) {
+    const list = DATA.courses[trail] || [];
+    list.forEach(function(c) { all.push(Object.assign({}, c, {trail: trail})); });
+  });
+  return all;
+}
+
+function initAllCoursesMap() {
+  if (!window.google || !window.google.maps) {
+    document.getElementById('allmap-status').style.display = 'block';
+    document.getElementById('allmap-progress').textContent = 'Google Maps API 로딩 오류';
+    return;
+  }
+  loadGeocodeCache();
+
+  const container = document.getElementById('allmap-container');
+  if (!container) return;
+
+  if (!_allMap) {
+    _allMap = new google.maps.Map(container, {
+      zoom: 7,
+      center: {lat: 36.5, lng: 127.8},
+      mapTypeId: 'roadmap',
+      gestureHandling: 'greedy',
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: true
+    });
+    _allMapIW = new google.maps.InfoWindow();
+  } else {
+    google.maps.event.trigger(_allMap, 'resize');
+    if (_allMapMarkers.length > 0) return;
+  }
+
+  const allCourses = getAllCourses();
+  const statusEl = document.getElementById('allmap-status');
+  const progEl = document.getElementById('allmap-progress');
+
+  const cached = allCourses.filter(function(c) { return _geocodeCache[c.trail+':'+c.no]; });
+  const uncached = allCourses.filter(function(c) { return !_geocodeCache[c.trail+':'+c.no]; });
+
+  cached.forEach(function(c) { addAllMapMarker(c, _geocodeCache[c.trail+':'+c.no]); });
+
+  if (uncached.length === 0) {
+    if (statusEl) statusEl.style.display = 'none';
+    return;
+  }
+
+  if (statusEl) { statusEl.style.display = 'block'; }
+  if (progEl) progEl.textContent = cached.length + '/' + allCourses.length + ' (새 위치 로딩중...)';
+
+  const geocoder = new google.maps.Geocoder();
+  let done = cached.length;
+  let idx = 0;
+
+  function processNext() {
+    if (idx >= uncached.length) {
+      saveGeocodeCache();
+      if (statusEl) statusEl.style.display = 'none';
+      return;
+    }
+    const c = uncached[idx++];
+    const key = c.trail + ':' + c.no;
+    const query = c.start + ' ' + (c.region||c.city) + ' 대한민국';
+    geocoder.geocode({address: query, region: 'kr'}, function(results, status) {
+      if (status === 'OK' && results.length > 0) {
+        const loc = {
+          lat: results[0].geometry.location.lat(),
+          lng: results[0].geometry.location.lng()
+        };
+        _geocodeCache[key] = loc;
+        addAllMapMarker(c, loc);
+      }
+      done++;
+      if (progEl) progEl.textContent = done + '/' + allCourses.length;
+      if (done % 20 === 0) saveGeocodeCache();
+      setTimeout(processNext, 80);
+    });
+  }
+
+  const BATCH = 5;
+  for (let i = 0; i < Math.min(BATCH, uncached.length); i++) processNext();
+}
+
+function addAllMapMarker(course, coord) {
+  const color = ALLMAP_COLORS[course.trail] || '#999';
+  const marker = new google.maps.Marker({
+    position: coord,
+    map: _allMap,
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      fillColor: color,
+      fillOpacity: 0.9,
+      strokeColor: '#ffffff',
+      strokeWeight: 1.5,
+      scale: 7
+    },
+    title: course.name,
+    zIndex: 1
+  });
+  _allMapMarkers.push(marker);
+
+  marker.addListener('click', function() {
+    const km = course.distance ? course.distance + 'km' : '?';
+    const heritage = course.heritage ? '<br>🏛️ ' + course.heritage : '';
+    _allMapIW.setContent(
+      '<div style="min-width:220px;max-width:300px;font-size:0.82rem;color:#111;line-height:1.6">'
+      + '<b style="font-size:0.9rem;color:' + color + '">' + course.name + '</b><br>'
+      + '📍 <b>출발:</b> ' + course.start + '<br>'
+      + '🏁 <b>도착:</b> ' + course.end + '<br>'
+      + '🦶 ' + km + ' &nbsp;⏱️ ' + (course.duration||'?') + '<br>'
+      + '📌 ' + (course.region||course.city)
+      + heritage
+      + '</div>'
+    );
+    _allMapIW.open(_allMap, marker);
+  });
 }
 
 function setTrail(t, btn) {
