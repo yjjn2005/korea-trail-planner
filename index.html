@@ -1005,7 +1005,36 @@ function toggleMapFrame(no, btn) {
 
   if (points.length>1) {
     const lls = points.map(p=>L.latLng(p[0],p[1]));
-    L.polyline(lls,{color:'#3b9eff',weight:2.5,opacity:0.5,dashArray:'7,5'}).addTo(map);
+    // 구간별 클릭 가능한 세그먼트 폴리라인
+    for (let i=0; i<points.length-1; i++) {
+      const s0 = sched[i], s1 = sched[i+1];
+      const isTrek0 = s0.type && s0.type.includes('트레킹');
+      const segColor = isTrek0 ? '#3b9eff' : '#777';
+      const seg = L.polyline([lls[i], lls[i+1]], {
+        color: segColor, weight: 5, opacity: 0.45, dashArray: isTrek0 ? null : '7,5'
+      }).addTo(map);
+      // 호버 하이라이트
+      seg.on('mouseover', function() { this.setStyle({opacity:0.9, weight:8}); });
+      seg.on('mouseout',  function() { this.setStyle({opacity:0.45, weight:5}); });
+      // 구간 클릭 팝업
+      (function(segRef, day0, day1, fromCity, toCity) {
+        const dist = parseFloat(day1.distance) || 0;
+        const wt = dist ? walkTime(dist) : '';
+        const isTrekSeg = day1.type && day1.type.includes('트레킹');
+        const popHtml = '<div style="font-size:0.85rem;min-width:200px;line-height:1.8;color:#111">'
+          + '<b style="font-size:0.95rem">D'+(day0.day)+'→D'+(day1.day)+'  구간</b><br>'
+          + '<span style="color:#555;font-size:0.78rem">'+(day1.activity||'')+'</span>'
+          + (isTrekSeg && dist ? '<hr style="border:none;border-top:1px solid #ddd;margin:5px 0">'
+            + '📍 '+fromCity+' → '+toCity+'<br>'
+            + '🦶 거리 <b>'+dist+'km</b>&nbsp;&nbsp;⏱ <b style="color:#c17d00">'+wt+'</b></div>'
+            : '</div>');
+        segRef.bindPopup(popHtml, {maxWidth:260});
+        segRef.on('click', function(e) {
+          L.DomEvent.stopPropagation(e);
+          segRef.openPopup(e.latlng);
+        });
+      })(seg, sched[i], sched[i+1], s0.city||'', s1.city||'');
+    }
     map.fitBounds(L.latLngBounds(lls),{padding:[32,32]});
   } else if (points.length===1) {
     map.setView(points[0],11);
