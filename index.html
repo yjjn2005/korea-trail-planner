@@ -922,16 +922,16 @@ function walkTime(km) {
   return hh > 0 ? hh+'시간'+(mm>0?' '+mm+'분':'') : mm+'분';
 }
 
-function makeSvgIcon(label, color) {
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44">'
-    + '<circle cx="22" cy="22" r="19" fill="'+color+'" stroke="white" stroke-width="3"/>'
-    + '<text x="22" y="27" text-anchor="middle" fill="white" font-size="12" font-weight="bold" font-family="Arial,sans-serif">'+label+'</text>'
-    + '</svg>';
+function makeGmIcon(color) {
   return {
-    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-    scaledSize: new google.maps.Size(44, 44),
-    anchor: new google.maps.Point(22, 22)
+    path: google.maps.SymbolPath.CIRCLE,
+    fillColor: color, fillOpacity: 1,
+    strokeColor: '#ffffff', strokeWeight: 3,
+    scale: 20
   };
+}
+function makeGmLabel(text, color) {
+  return { text, color: '#ffffff', fontWeight: 'bold', fontSize: '12px', fontFamily: 'Arial,sans-serif' };
 }
 
 function toggleMapFrame(no, btn) {
@@ -988,7 +988,8 @@ function toggleMapFrame(no, btn) {
 
     const marker = new google.maps.Marker({
       position: {lat, lng}, map,
-      icon: makeSvgIcon('D'+s.day, color),
+      icon: makeGmIcon(color),
+      label: makeGmLabel('D'+s.day, color),
       zIndex: idx+1, title: 'D'+s.day+' '+s.city
     });
 
